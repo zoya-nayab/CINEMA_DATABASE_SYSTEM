@@ -1,0 +1,173 @@
+/* =========================================
+   0. DROP TABLES (SAFE DROP)
+========================================= */
+BEGIN EXECUTE IMMEDIATE 'DROP TABLE paymentss CASCADE CONSTRAINTS'; EXCEPTION WHEN OTHERS THEN NULL; END;
+/
+BEGIN EXECUTE IMMEDIATE 'DROP TABLE ticketss CASCADE CONSTRAINTS'; EXCEPTION WHEN OTHERS THEN NULL; END;
+/
+BEGIN EXECUTE IMMEDIATE 'DROP TABLE showtimess CASCADE CONSTRAINTS'; EXCEPTION WHEN OTHERS THEN NULL; END;
+/
+BEGIN EXECUTE IMMEDIATE 'DROP TABLE invoicess CASCADE CONSTRAINTS'; EXCEPTION WHEN OTHERS THEN NULL; END;
+/
+BEGIN EXECUTE IMMEDIATE 'DROP TABLE customerss CASCADE CONSTRAINTS'; EXCEPTION WHEN OTHERS THEN NULL; END;
+/
+BEGIN EXECUTE IMMEDIATE 'DROP TABLE moviess CASCADE CONSTRAINTS'; EXCEPTION WHEN OTHERS THEN NULL; END;
+/
+BEGIN EXECUTE IMMEDIATE 'DROP TABLE theaterss CASCADE CONSTRAINTS'; EXCEPTION WHEN OTHERS THEN NULL; END;
+/
+BEGIN EXECUTE IMMEDIATE 'DROP TABLE genress CASCADE CONSTRAINTS'; EXCEPTION WHEN OTHERS THEN NULL; END;
+/
+BEGIN EXECUTE IMMEDIATE 'DROP TABLE userss CASCADE CONSTRAINTS'; EXCEPTION WHEN OTHERS THEN NULL; END;
+/
+
+/* =========================================
+   1. USERS
+========================================= */
+CREATE TABLE userss (
+    user_id NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    username VARCHAR2(50) UNIQUE NOT NULL,
+    password VARCHAR2(255) NOT NULL,
+    role VARCHAR2(20) NOT NULL
+        CONSTRAINT chk_role CHECK (role IN ('ADMIN','MANAGER','USER')),
+    created_at DATE DEFAULT SYSDATE
+);
+
+/* =========================================
+   2. GENRES
+========================================= */
+CREATE TABLE genress (
+    genre_id NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    genre_name VARCHAR2(50) UNIQUE NOT NULL
+);
+
+/* =========================================
+   3. THEATERS
+========================================= */
+CREATE TABLE theaterss (
+    theater_id NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    theater_name VARCHAR2(100) NOT NULL,
+    capacity NUMBER NOT NULL CHECK (capacity > 0),
+    category VARCHAR2(20) NOT NULL
+        CHECK (category IN ('PLATINUM','GOLD','SILVER'))
+);
+
+/* =========================================
+   4. MOVIES
+========================================= */
+CREATE TABLE moviess (
+    movie_id NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    title VARCHAR2(150) NOT NULL,
+    description CLOB,
+    duration_minutes NUMBER NOT NULL CHECK (duration_minutes > 0),
+    rating NUMBER(3,1) CHECK (rating BETWEEN 0 AND 10),
+    release_date DATE,
+    status VARCHAR2(20) DEFAULT 'ACTIVE'
+        CHECK (status IN ('ACTIVE','INACTIVE')),
+    genre_id NUMBER NOT NULL,
+    CONSTRAINT fk_movie_genre
+        FOREIGN KEY (genre_id)
+        REFERENCES genress(genre_id)
+);
+
+/* =========================================
+   5. CUSTOMERS
+========================================= */
+CREATE TABLE customerss (
+    customer_id NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    full_name VARCHAR2(100) NOT NULL,
+    email VARCHAR2(100) UNIQUE NOT NULL,
+    phone VARCHAR2(20),
+    registration_date DATE DEFAULT SYSDATE
+);
+
+/* =========================================
+   6. SHOWTIMES
+========================================= */
+CREATE TABLE showtimess (
+    showtime_id NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    movie_id NUMBER NOT NULL,
+    theater_id NUMBER NOT NULL,
+    show_date DATE NOT NULL,
+    show_time TIMESTAMP NOT NULL,
+    price NUMBER(10,2) NOT NULL CHECK (price >= 0),
+
+    CONSTRAINT fk_show_movie
+        FOREIGN KEY (movie_id)
+        REFERENCES moviess(movie_id),
+
+    CONSTRAINT fk_show_theater
+        FOREIGN KEY (theater_id)
+        REFERENCES theaterss(theater_id)
+);
+
+/* =========================================
+   7. TICKETS
+========================================= */
+CREATE TABLE ticketss (
+    ticket_id NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    customer_id NUMBER NOT NULL,
+    showtime_id NUMBER NOT NULL,
+    seat_number VARCHAR2(10) NOT NULL,
+    booking_date DATE DEFAULT SYSDATE,
+    status VARCHAR2(20) DEFAULT 'BOOKED'
+        CHECK (status IN ('BOOKED','CANCELLED')),
+
+    CONSTRAINT fk_ticket_customer
+        FOREIGN KEY (customer_id)
+        REFERENCES customerss(customer_id),
+
+    CONSTRAINT fk_ticket_showtime
+        FOREIGN KEY (showtime_id)
+        REFERENCES showtimess(showtime_id),
+
+    CONSTRAINT unique_seat_per_show
+        UNIQUE (showtime_id, seat_number)
+);
+
+/* =========================================
+   8. PAYMENTS
+========================================= */
+CREATE TABLE paymentss (
+    payment_id NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    ticket_id NUMBER UNIQUE NOT NULL,
+    payment_date DATE DEFAULT SYSDATE,
+    amount NUMBER(10,2) NOT NULL CHECK (amount >= 0),
+    payment_method VARCHAR2(20) NOT NULL
+        CHECK (payment_method IN ('CASH','CARD','ONLINE')),
+    payment_status VARCHAR2(20) DEFAULT 'PAID'
+        CHECK (payment_status IN ('PAID','PENDING','FAILED')),
+
+    CONSTRAINT fk_payment_ticket
+        FOREIGN KEY (ticket_id)
+        REFERENCES ticketss(ticket_id)
+);
+
+/* =========================================
+   9. SINGLE INVOICE TABLE
+========================================= */
+CREATE TABLE invoicess (
+    invoice_id NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    customer_id NUMBER NOT NULL,
+    ticket_id NUMBER UNIQUE NOT NULL,
+    invoice_date DATE DEFAULT SYSDATE,
+    total_amount NUMBER(12,2) NOT NULL CHECK (total_amount >= 0),
+
+    CONSTRAINT fk_invoice_customer
+        FOREIGN KEY (customer_id)
+        REFERENCES customerss(customer_id),
+
+    CONSTRAINT fk_invoice_ticket
+        FOREIGN KEY (ticket_id)
+        REFERENCES ticketss(ticket_id)
+);
+
+/* =========================================
+   10. TRIGGER TO PREVENT INVOICE DELETION
+========================================= */
+CREATE OR REPLACE TRIGGER prevent_invoice_delete
+BEFORE DELETE ON invoicess
+FOR EACH ROW
+BEGIN
+   RAISE_APPLICATION_ERROR(-20001, 'Invoice deletion is not allowed.');
+END;
+/
